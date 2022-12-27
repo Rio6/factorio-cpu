@@ -103,7 +103,7 @@ rows = len(head) + len(srcs) + len(foot)
 breaks = 5
 
 count = 0
-def update_number(entity, number):
+def update_number(entity):
    global count
    entity['entity_number'] = count
    for node in entity.get('connections', {}).values():
@@ -115,7 +115,7 @@ def update_number(entity, number):
 for col, dst in enumerate(dsts):
    hh = copy.deepcopy(head)
    for h in hh:
-      update_number(h, count)
+      update_number(h)
       h['position']['x'] += col*2 + col // breaks * 2
 
    col_conn = {
@@ -133,7 +133,7 @@ for col, dst in enumerate(dsts):
 
    for row, v in enumerate(srcs):
       b = copy.deepcopy(body)
-      update_number(b, count)
+      update_number(b)
       b['position']['y'] += row
       b['position']['x'] += col*2 + col // breaks * 2
       b['control_behavior']['decider_conditions']['first_signal']['name'] = 'signal-' + dst
@@ -170,7 +170,7 @@ for col, dst in enumerate(dsts):
 
    ff = copy.deepcopy(foot)
    for f in ff:
-      update_number(f, count)
+      update_number(f)
       f['position']['x'] = col*2 + col // breaks * 2
       f['position']['y'] = len(srcs) + len(head)
       f['control_behavior']['decider_conditions']['first_signal']['name'] = 'signal-' + dst

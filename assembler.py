@@ -1,4 +1,4 @@
-import sys
+import sys, ast
 from getopt import getopt
 from rom import generate_rom
 from factorio_bp import encode_bp
@@ -53,7 +53,10 @@ class Controls:
       self.merge = False;
 
    def add(self, control):
-      if self.merge and len(control) > 0:
+      if self.merge and len(self.controls) > 0:
+         for k, v in control.items():
+            if k in self.controls[-1].keys() and self.controls[-1][k] != v:
+               raise Exception("can not merge instructions with conflicting controls")
          self.controls[-1].update(control)
       else:
          self.controls.append(control)
@@ -82,8 +85,9 @@ def genmov(dst, src, data=None):
 def main(args):
    fdi = sys.stdin
    fdo = sys.stdout
-   offset = 1
    debug = False
+   offset = 1
+   romoffset = 1
 
    for [k, v] in getopt(args[1:], 'i:o:s:d')[0]:
       match k:
@@ -92,16 +96,15 @@ def main(args):
          case '-o':
             fdo = open(v, 'w')
          case '-s':
-            try:
-               offset = int(v)
-            except ValueError:
-               print(f"offset must be a number")
-               return 1
+            romoffset = int(v)
          case '-d':
             debug = True
 
    controls = Controls(offset=offset)
    labels = {}
+   consts = {}
+   romaddr = {}
+   romdata = []
 
    # convert each line to control signals
    for line in fdi:
@@ -113,6 +116,9 @@ def main(args):
             if src.isnumeric():
                # mov immediate
                controls.add(genmov(dst, 'immed', int(src)))
+            elif src[0] in ['.', '#']:
+               # mov immediate with build time variable
+               controls.add(genmov(dst, 'immed', src))
             else:
                # mov register
                controls.add(genmov(dst, src))
@@ -123,6 +129,7 @@ def main(args):
          case [j, tgt] if j[0] == 'j':
             cond = j[1:]
             immed = None
+
             if tgt.isnumeric():
                # jump immediete
                immed = int(tgt)
@@ -154,38 +161,83 @@ def main(args):
          case ['noop']:
             controls.add({})
 
+         case [label] if len(label) > 1 and label[-1] == ':':
+            # labels
+            if label in labels:
+               raise ValueError(f"duplicated label {label}")
+            labels[label] = controls.current_addr()
+
+         case [name, value] if len(name) > 1 and name[0] == '#':
+            # constant define
+            if not value.isnumeric():
+               raise ValueError("only int constant is supported")
+            consts[name] = int(value)
+
+         case [name, *values] if len(name) > 1 and name[0] == '.':
+            # data in rom
+            romaddr[name] = len(romdata) + romoffset
+
+            for vv in values:
+               vv = ast.literal_eval(vv)
+               if type(vv) == str:
+                  vv = [ord(c) for c in vv]
+               elif type(vv) == int:
+                  vv = [vv]
+               else:
+                  raise ValueError(f"only int and string data is supported")
+
+               for v in vv:
+                  romdata.append({'D': v})
+
          case ['']:
             pass
 
-         case [label] if label[-1] == ':':
-            # position of labels
-            label = label[:-1]
-            if label in labels:
-               print(f"duplicated label {label}", file=sys.stderr)
-               return 1
-            labels[label] = controls.current_addr()
-
-         case [op, *args]:
-            print(f"unknown instruction {line}", file=sys.stderr)
-            return 1
+         case _:
+            raise Exception(f"error parsing {line}")
 
       if merge_next:
          controls.merge_next()
 
-   # set label values
+   # populate labels, constants, rom addresses
    for control in controls:
       d = control.get('D')
-      if type(d) == str and d[-1] == ':':
-         label = d[:-1]
-         if label not in labels:
-            print(f"unknown label {label}", file=sys.stderr)
-            return 1
-         control['D'] = labels[label]
+      if type(d) == str:
+         if d[-1] == ':':
+            if d not in labels:
+               print(f"unknown label {d}", file=sys.stderr)
+               return 1
+            control['D'] = labels[d]
+
+         if d[0] == '.':
+            if d not in romaddr:
+               print(f"unknown name {d}", file=sys.stderr)
+               return 1
+            control['D'] = romaddr[d]
+
+         if d[0] == '#':
+            if d not in consts:
+               print(f"unknown constant {d}", file=sys.stderr)
+               return 1
+            control['D'] = consts[d]
 
    if debug:
-      fdo.write(repr(controls))
+      fdo.write(repr(controls) + '\n')
+      fdo.write(repr(romdata) + '\n')
    else:
-      fdo.write(encode_bp(generate_rom(controls.controls, start=offset, columns=16)))
+      # generate blueprints for 2 roms
+      controlbp = generate_rom(controls.controls, start_addr=offset, columns=10)
+      romdatabp = generate_rom(romdata, start_addr=romoffset, columns=10, entity_start=len(controlbp['blueprint']['entities'])+1)
+
+      # merge blueprints
+      for e in romdatabp['blueprint']['entities']:
+         e['position']['x'] += 14
+      controlbp['blueprint']['entities'] += romdatabp['blueprint']['entities']
+
+      # print blueprint
+      fdo.write(encode_bp(controlbp) + '\n')
 
 if __name__ == '__main__':
-   sys.exit(main(sys.argv))
+   try:
+      sys.exit(main(sys.argv))
+   except Exception as e:
+      print(e, file=sys.stderr)
