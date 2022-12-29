@@ -56,7 +56,7 @@ class Controls:
       if self.merge and len(self.controls) > 0:
          for k, v in control.items():
             if k in self.controls[-1].keys() and self.controls[-1][k] != v:
-               raise Exception("can not merge instructions with conflicting controls")
+               raise ValueError("can not merge instructions with conflicting controls")
          self.controls[-1].update(control)
       else:
          self.controls.append(control)
@@ -193,7 +193,7 @@ def main(args):
             pass
 
          case _:
-            raise Exception(f"error parsing {line}")
+            raise ValueError(f"error parsing {line}")
 
       if merge_next:
          controls.merge_next()
@@ -239,5 +239,5 @@ def main(args):
 if __name__ == '__main__':
    try:
       sys.exit(main(sys.argv))
-   except Exception as e:
+   except ValueError as e:
       print(e, file=sys.stderr)

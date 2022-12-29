@@ -19,13 +19,29 @@ head_template = [
       'control_behavior':{'arithmetic_conditions':{'first_signal':{'type':'virtual','name':'signal-D'},'second_constant':-1,'operation':'*','output_signal':{'type':'virtual','name':'signal-D'}}},
       'connections': {'1':{'red':[{'entity_id':1,'circuit_id':1}]},'2':{'red':[{'entity_id':1,'circuit_id':2}],'green':[{'entity_id':1,'circuit_id':2}]}}
    },
+   {
+      'entity_number': 0,
+      'name': 'decider-combinator',
+      'position': {'x':1,'y':0},
+      'direction': 4,
+      'control_behavior':{'decider_conditions':{'first_signal':{'type':'virtual','name':'signal-D'},'constant':123,'comparator':'<','output_signal':{'type':'virtual','name':'signal-D'},'copy_count_from_input':True}},
+      'connections': {'1':{'red':[{'entity_id':1,'circuit_id':1}]},'2':{'red':[{'entity_id':1,'circuit_id':2}],'green':[{'entity_id':1,'circuit_id':2}]}}
+   },
+   {
+      'entity_number': 0,
+      'name': 'decider-combinator',
+      'position': {'x':2,'y':0},
+      'direction': 4,
+      'control_behavior':{'decider_conditions':{'first_signal':{'type':'virtual','name':'signal-D'},'constant':123,'comparator':'>=','output_signal':{'type':'virtual','name':'signal-D'},'copy_count_from_input':True}},
+      'connections': {'1':{'red':[{'entity_id':1,'circuit_id':1}]},'2':{'red':[{'entity_id':1,'circuit_id':2}],'green':[{'entity_id':1,'circuit_id':2}]}}
+   },
 ]
 
 cell_template = [
    {
       'entity_number': 0,
       'name': 'decider-combinator',
-      'position': {'x':1,'y':0},
+      'position': {'x':0,'y':0},
       'direction': 4,
       'control_behavior':{'decider_conditions':{'first_signal':{'type':'virtual','name':'signal-D'},'constant':123,'comparator':'=','output_signal':{'type':'virtual','name':'signal-everything'},'copy_count_from_input':True}},
       'connections': {'1':{'green':[{'entity_id':1}],'red':[{'entity_id':2,'circuit_id':1}]},'2':{'red':[{'entity_id':2,'circuit_id':2}],'green':[{'entity_id':2,'circuit_id':2}]}}
@@ -33,7 +49,7 @@ cell_template = [
    {
       'entity_number': 0,
       'name': 'constant-combinator',
-      'position': {'x':1,'y':-1.5},
+      'position': {'x':0,'y':-1.5},
       'direction': 4,
       'control_behavior': {'filters':[]}
    }
@@ -57,7 +73,10 @@ def generate_rom(data, start_addr=1, columns=16, addr_signal='D', entity_start=0
    bp = copy.deepcopy(bp_template)
 
    head = copy.deepcopy(head_template)
-   update_number(head[0])
+   for h in head:
+      update_number(h)
+   head[1]['control_behavior']['decider_conditions']['constant'] = start_addr
+   head[2]['control_behavior']['decider_conditions']['constant'] = start_addr + len(data)
 
    bp['blueprint']['entities'] += head
 
@@ -65,8 +84,9 @@ def generate_rom(data, start_addr=1, columns=16, addr_signal='D', entity_start=0
       for cell in cell_template:
          entity = copy.deepcopy(cell)
          update_number(entity)
-         entity['position']['x'] += i % columns if (i // columns) % 2 == 0 else columns - i % columns - 1
-         entity['position']['y'] -= i // columns * 3
+         c = len(head) + i
+         entity['position']['x'] += c % columns if (c // columns) % 2 == 0 else columns - c % columns - 1
+         entity['position']['y'] -= c // columns * 3
 
          ctl = entity.get('control_behavior', {})
          cond = ctl.get('decider_conditions', {})
