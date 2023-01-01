@@ -201,8 +201,8 @@ def main(args):
                # mov register
                parser.add_control(genmov(dst, src))
 
-         case ['inc', reg] if section == 'code':
-            parser.add_control(genmov(reg, 'inc'))
+         case ['inc' | 'dec' as inc, reg] if section == 'code':
+            parser.add_control(genmov(reg, inc))
 
          case [j, tgt] if section == 'code' and j[0] == 'j':
             cond = j[1:]
