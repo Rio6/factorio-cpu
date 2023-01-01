@@ -61,7 +61,7 @@ s = 1 # self connect
 r = 2 # row connect
 c = 4 # control connect
 
-srcs = [0, -1, -1, -2, -2, 1, 1, 2, -3, -3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+srcs = [0, -1, -1, -2, -2, 1, 1, 2, -3, -3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
 dsts = [
    'J', 'C', 'A', 'B', 'X', 'Y', 'Z', 'R', 'W', 'L', #'K'
 ]
@@ -92,11 +92,13 @@ conns = [
    [n,  r,  r,  r,  r,  r,  r,  r,  r,  r], # 17
    [n,  r,  r,  r,  r,  r,  r,  r,  r,  r], # 18
    [n,  r,  r,  r,  r,  r,  r,  r,  r,  r], # 19
-   [r,  r,  r|s,r,  r,  r,  r,  r,  r,  r], # 20
-   [r,  r,  r,  r|s,r,  r,  r,  r,  r,  r], # 21
-   [r,  r,  r,  r,  r|s,r,  r,  r,  r,  r], # 22
-   [r,  r,  r,  r,  r,  r|s,r,  r,  r,  r], # 23
-   [r,  r,  r,  r,  r,  r,  r|s,r,  r,  r], # 24
+   [n,  r,  r,  r,  r,  r,  r,  r,  r,  r], # 20
+   [n,  r,  r,  r,  r,  r,  r,  r,  r,  r], # 21
+   [r,  r,  r|s,r,  r,  r,  r,  r,  r,  r], # 22
+   [r,  r,  r,  r|s,r,  r,  r,  r,  r,  r], # 23
+   [r,  r,  r,  r,  r|s,r,  r,  r,  r,  r], # 24
+   [r,  r,  r,  r,  r,  r|s,r,  r,  r,  r], # 25
+   [r,  r,  r,  r,  r,  r,  r|s,r,  r,  r], # 26
 ]
 
 rows = len(head) + len(srcs) + len(foot)

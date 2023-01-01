@@ -1,4 +1,4 @@
-import sys, ast
+import sys
 from getopt import getopt
 from rom import generate_rom
 from factorio_bp import encode_bp
@@ -25,11 +25,13 @@ src_regs = {
    'gt'    : 17,
    'le'    : 18,
    'ge'    : 19,
-   'a'     : 20,
-   'b'     : 21,
-   'x'     : 22,
-   'y'     : 23,
-   'z'     : 24,
+   'zero'  : 20,
+   'nero'  : 21,
+   'a'     : 22,
+   'b'     : 23,
+   'x'     : 24,
+   'y'     : 25,
+   'z'     : 26,
 }
 
 dst_regs = {
@@ -46,13 +48,15 @@ dst_regs = {
    'wd': 'L',
 }
 
-class Controls:
-   def __init__(self, *args, offset=1):
+class Parser:
+   def __init__(self, *args, contoff=1, romoff=1):
       self.controls = []
-      self.offset = offset
+      self.romdata = []
+      self.contoff = contoff
+      self.romoff = romoff
       self.merge = False;
 
-   def add(self, control):
+   def add_control(self, control):
       if self.merge and len(self.controls) > 0:
          for k, v in control.items():
             if k in self.controls[-1].keys() and self.controls[-1][k] != v:
@@ -62,32 +66,83 @@ class Controls:
          self.controls.append(control)
       self.merge = False
 
+   def add_romdata(self, romdata):
+      self.romdata.append({'D': romdata})
+
    def merge_next(self):
       self.merge = True
 
-   def current_addr(self):
-      return len(self.controls) + self.offset
+   def contraddr(self):
+      return len(self.controls) + self.contoff
 
-   def __iter__(self):
-      return iter(self.controls)
+   def romaddr(self):
+      return len(self.romdata) + self.romoff
 
    def __repr__(self):
-      return self.controls.__repr__()
+      return repr(self.controls) + '\n' + repr(self.romdata)
+
+def split_words(line):
+   quote = None
+   escaped = False
+   parsed = -1
+   words = []
+   line = line.strip(' \n\r\t\\')
+
+   def try_int(v):
+      try:
+         return int(v, 0)
+      except ValueError:
+         return v
+
+   for i, c in enumerate(line):
+      if quote is not None:
+         if escaped:
+            escaped = False
+         elif c == '\\':
+            escaped = True
+         elif c == quote:
+            if c == "'":
+               if i - parsed > 2:
+                  raise ValueError(f"character literal {line[parsed:i+1]} too long")
+               words.append(ord(line[parsed+1:i]))
+            else:
+               words.append(bytes(line[parsed+1:i], 'utf-8').decode("unicode_escape"))
+
+            quote = None
+            parsed = i
+      else:
+         if c in ['"', "'"]:
+            if i - parsed > 1:
+               raise ValueError(f"unexpected quote in {line}")
+            quote = c
+            parsed = i
+         elif c in [' ', '\t']:
+            if i - parsed > 1:
+               words.append(try_int(line[parsed+1:i]))
+            parsed = i
+
+   if len(line) - parsed > 1:
+      words.append(try_int(line[parsed+1:len(line)]))
+
+   return words
 
 def genmov(dst, src, data=None):
    dst = dst.lower().split(',')
    src = src.lower()
-   if data:
+   if data is not None:
       return {**{dst_regs[d]: src_regs[src] for d in dst}, 'D': data}
    else:
       return {dst_regs[d]: src_regs[src] for d in dst}
+
+def nonempty_str(s):
+   return type(s) is str and len(s) > 0
 
 def main(args):
    fdi = sys.stdin
    fdo = sys.stdout
    debug = False
-   offset = 1
-   romoffset = 1
+   contoff = 1
+   romoff = 1
 
    for [k, v] in getopt(args[1:], 'i:o:s:d')[0]:
       match k:
@@ -96,137 +151,145 @@ def main(args):
          case '-o':
             fdo = open(v, 'w')
          case '-s':
-            romoffset = int(v)
+            romoff = int(v)
          case '-d':
             debug = True
 
-   controls = Controls(offset=offset)
+   parser = Parser(contoff=contoff, romoff=romoff)
+   section = 'code'
    labels = {}
    consts = {}
-   romaddr = {}
-   romdata = []
 
    # convert each line to control signals
    for line in fdi:
-      merge_next = '\\' in line
-      line = line.strip(' \n\r\t\\')
+      line = line.strip(' \n\r\t')
+      code = line.split(';')[0]
+      words = split_words(code)
+      merge_next = '\\' in code
 
-      match line.split(' '):
-         case ['mov', dst, src]:
-            if src.isnumeric():
-               # mov immediate
-               controls.add(genmov(dst, 'immed', int(src)))
-            elif src[0] in ['.', '#']:
-               # mov immediate with build time variable
-               controls.add(genmov(dst, 'immed', src))
+      # process section directives and labels
+      match words:
+         case [sec] if nonempty_str(sec) and sec[0] == '.':
+            section = sec[1:]
+            words = []
+
+         case [label, *rest] if nonempty_str(label) and label[-1] == ':':
+            match section:
+               case 'code':
+                  # code labels
+                  if label in labels:
+                     raise ValueError(f"duplicated label {label}")
+                  labels[label] = parser.contraddr()
+
+               case 'data' | _:
+                  # data labels
+                  if label in labels:
+                     raise ValueError(f"duplicated label {label}")
+                  labels[label] = parser.romaddr()
+            words = rest
+
+      # process instruction and data
+      match words:
+         case ['mov', dst, src] if section == 'code':
+            if type(src) is int:
+               # mov immediate with literal
+               parser.add_control(genmov(dst, 'immed', src))
+            elif src[0] == '#' or src[-1] == ':':
+               # mov immediate with label address or constant
+               parser.add_control(genmov(dst, 'immed', src))
             else:
                # mov register
-               controls.add(genmov(dst, src))
+               parser.add_control(genmov(dst, src))
 
-         case ['inc', reg]:
-            controls.add(genmov(reg, 'inc'))
+         case ['inc', reg] if section == 'code':
+            parser.add_control(genmov(reg, 'inc'))
 
-         case [j, tgt] if j[0] == 'j':
+         case [j, tgt] if section == 'code' and j[0] == 'j':
             cond = j[1:]
-            immed = None
 
-            if tgt.isnumeric():
-               # jump immediete
-               immed = int(tgt)
-
+            if type(tgt) is int:
+               # jump to immediate
+               immed = tgt
             elif tgt[-1] == ':':
                # jump to label, use as place holder and set values later
                immed = tgt
-
             else:
                # jump to register
-               pass
+               immed = None
 
             if not cond:
                if immed is not None:
-                  controls.add(genmov('jmp', 'immed', immed))
+                  parser.add_control(genmov('jmp', 'immed', immed))
                else:
-                  controls.add(genmov('jmp', tgt))
+                  parser.add_control(genmov('jmp', tgt))
             else:
+               # jz, jnz short command
+               match cond:
+                  case 'z': cond = 'zero'
+                  case 'nz': cond = 'nero'
+
                if immed is not None:
-                  controls.add(genmov('cj', cond))
-                  controls.add({'D': immed})
+                  parser.add_control(genmov('cj', cond))
+                  parser.add_control({'D': immed})
                else:
-                  controls.add({
+                  parser.add_control({
                      **genmov('cj', cond),
                      **genmov('cd', tgt)
                   })
-                  controls.add({})
+                  parser.add_control({})
 
-         case ['noop']:
-            controls.add({})
+         case ['noop'] if section == 'code':
+            parser.add_control({})
 
-         case [label] if len(label) > 1 and label[-1] == ':':
-            # labels
-            if label in labels:
-               raise ValueError(f"duplicated label {label}")
-            labels[label] = controls.current_addr()
-
-         case [name, value] if len(name) > 1 and name[0] == '#':
-            # constant define
-            if not value.isnumeric():
-               raise ValueError("only int constant is supported")
-            consts[name] = int(value)
-
-         case [name, *values] if len(name) > 1 and name[0] == '.':
-            # data in rom
-            romaddr[name] = len(romdata) + romoffset
-
+         case [*values] if section == 'data':
+            # rom data
             for vv in values:
-               vv = ast.literal_eval(vv)
                if type(vv) == str:
-                  vv = [ord(c) for c in vv]
+                  for v in vv:
+                     parser.add_romdata(ord(v))
                elif type(vv) == int:
-                  vv = [vv]
+                  parser.add_romdata(vv)
                else:
                   raise ValueError(f"only int and string data is supported")
 
-               for v in vv:
-                  romdata.append({'D': v})
+         case [name, value] if name and name[0] == '#':
+            # constant define
+            if type(value) is not int:
+               raise ValueError(f"constant must be integer, got {value}")
+            consts[name] = value
 
-         case ['']:
+         case [] | ['']:
             pass
 
          case _:
             raise ValueError(f"error parsing {line}")
 
       if merge_next:
-         controls.merge_next()
+         parser.merge_next()
 
    # populate labels, constants, rom addresses
-   for control in controls:
-      d = control.get('D')
+   for cont in parser.controls:
+      d = cont.get('D')
       if type(d) == str:
          if d[-1] == ':':
             if d not in labels:
                print(f"unknown label {d}", file=sys.stderr)
                return 1
-            control['D'] = labels[d]
-
-         if d[0] == '.':
-            if d not in romaddr:
-               print(f"unknown name {d}", file=sys.stderr)
-               return 1
-            control['D'] = romaddr[d]
+            cont['D'] = labels[d]
 
          if d[0] == '#':
             if d not in consts:
                print(f"unknown constant {d}", file=sys.stderr)
                return 1
-            control['D'] = consts[d]
+            cont['D'] = consts[d]
 
    if debug:
-      fdo.write(repr(controls) + '\n')
-      fdo.write(repr(romdata) + '\n')
+      fdo.write(repr(labels) + '\n')
+      fdo.write(repr(parser) + '\n')
    else:
       # generate blueprints for 2 roms
-      controlbp = generate_rom(controls.controls, start_addr=offset, columns=10)
-      romdatabp = generate_rom(romdata, start_addr=romoffset, columns=10, entity_start=len(controlbp['blueprint']['entities'])+1)
+      controlbp = generate_rom(parser.controls, start_addr=contoff, columns=10)
+      romdatabp = generate_rom(parser.romdata, start_addr=romoff, columns=10, entity_start=len(controlbp['blueprint']['entities'])+1)
 
       # merge blueprints
       for e in romdatabp['blueprint']['entities']:

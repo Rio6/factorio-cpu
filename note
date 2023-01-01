@@ -1,16 +1,16 @@
-.     .     0     1      2   -3   4    5    6    7    8    9   10  11   12  13   14  15  16  17  18  19  20  21  22  23  24  -1   -2
-name  regs  hold  immed  rd  add  sub  mul  div  mod  exp  ls  rs  and  or  xor  eq  ne  lt  gt  le  ge  a   b   x   y   z   inc  dec
-a     a     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-b     b     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-x     x     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-y     y     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-z     z     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-jmp   j     +     *      *   *    *    *    *    *    *    *   *   -    -   -    -   -   -   -   -   -   *   *   *   *   *   -    -
-cj    k     -     -      -   -    -    -    -    -    -    -   -   +    +   +    +   +   +   +   +   +   -   -   -   -   -   -    -
-cd    c     -     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   -    -
-ra    r     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-wa    w     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   *    *
-wd    l     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *   *   *   *   *   -    -
+.     .     0     1      2   -3   4    5    6    7    8    9   10  11   12  13   14  15  16  17  18  19  20  21    22  23  24  25  26  -1   -2
+name  regs  hold  immed  rd  add  sub  mul  div  mod  exp  ls  rs  and  or  xor  eq  ne  lt  gt  le  ge  zero zero a   b   x   y   z   inc  dec
+a     a     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+b     b     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+x     x     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+y     y     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+z     z     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+jmp   j     +     *      *   *    *    *    *    *    *    *   *   -    -   -    -   -   -   -   -   -   *    *    *   *   *   *   *   -    -
+cj    k     -     -      -   -    -    -    -    -    -    -   -   +    +   +    +   +   +   +   +   +   *    *    -   -   -   -   -   -    -
+cd    c     -     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   -    -
+ra    r     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+wa    w     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
+wd    l     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   -    -
 
 auto updates:
 rd = ram(ra)   1 tick after ra
@@ -18,3 +18,29 @@ ram(wa) = w(d) 4 ticks after wa
 add = a + b    0 tick
 sub = a - b    1 tick
 others ops     2 ticks
+
+video data
+bit 31:
+0: number
+1: bitmap
+
+address:
+0xx char
+1xx number
+
+mov wa #char1 \
+mov wd #king
+
+---
+
+mov a #map
+mov b 'A'
+mov ra add
+noop
+mov wa #char1 \
+mov wd rd
+
+---
+
+mov wa #char1 \
+mov wd 'A'
