@@ -1,5 +1,6 @@
 import sys
 from getopt import getopt
+from math_parser import evaluate as evalmath
 from rom import generate_rom
 from factorio_bp import encode_bp
 
@@ -48,7 +49,14 @@ dst_regs = {
    'wd': 'L',
 }
 
-class Parser:
+class AssemblerError(Exception):
+   def __init__(self, msg):
+      self.msg = msg
+
+   def __repr__(self):
+      return self.msg
+
+class FactorioRom:
    def __init__(self, *args, contoff=1, romoff=1):
       self.controls = []
       self.romdata = []
@@ -60,7 +68,7 @@ class Parser:
       if self.merge and len(self.controls) > 0:
          for k, v in control.items():
             if k in self.controls[-1].keys() and self.controls[-1][k] != v:
-               raise ValueError("can not merge instructions with conflicting controls")
+               raise AssemblerError("can not merge instructions with conflicting controls")
          self.controls[-1].update(control)
       else:
          self.controls.append(control)
@@ -86,15 +94,17 @@ def split_words(line):
    escaped = False
    parsed = -1
    words = []
-   line = line.strip(' \n\r\t\\')
+   line = line.strip(' \n\r\t')
+   count = 0
 
-   def try_int(v):
+   def int_or_str(v):
       try:
          return int(v, 0)
       except ValueError:
          return v
 
    for i, c in enumerate(line):
+      count += 1
       if quote is not None:
          if escaped:
             escaped = False
@@ -103,7 +113,7 @@ def split_words(line):
          elif c == quote:
             if c == "'":
                if i - parsed > 2:
-                  raise ValueError(f"character literal {line[parsed:i+1]} too long")
+                  raise AssemblerError(f"character literal {line[parsed:i+1]} too long")
                words.append(ord(line[parsed+1:i]))
             else:
                words.append(bytes(line[parsed+1:i], 'utf-8').decode("unicode_escape"))
@@ -113,16 +123,19 @@ def split_words(line):
       else:
          if c in ['"', "'"]:
             if i - parsed > 1:
-               raise ValueError(f"unexpected quote in {line}")
+               raise AssemblerError(f"unexpected quote in {line}")
             quote = c
             parsed = i
          elif c in [' ', '\t']:
             if i - parsed > 1:
-               words.append(try_int(line[parsed+1:i]))
+               words.append(int_or_str(line[parsed+1:i]))
             parsed = i
+         elif c == ';':
+            parsed = i
+            break
 
-   if len(line) - parsed > 1:
-      words.append(try_int(line[parsed+1:len(line)]))
+   if count - parsed > 1:
+      words.append(int_or_str(line[parsed+1:count]))
 
    return words
 
@@ -155,7 +168,7 @@ def main(args):
          case '-d':
             debug = True
 
-   parser = Parser(contoff=contoff, romoff=romoff)
+   factoriorom = FactorioRom(contoff=contoff, romoff=romoff)
    section = 'code'
    labels = {}
    consts = {}
@@ -163,9 +176,12 @@ def main(args):
    # convert each line to control signals
    for line in fdi:
       line = line.strip(' \n\r\t')
-      code = line.split(';')[0]
-      words = split_words(code)
-      merge_next = '\\' in code
+      words = split_words(line)
+      merge_next = False
+
+      if words and words[-1] == '\\':
+         merge_next = True
+         words.pop()
 
       # process section directives and labels
       match words:
@@ -178,14 +194,16 @@ def main(args):
                case 'code':
                   # code labels
                   if label in labels:
-                     raise ValueError(f"duplicated label {label}")
-                  labels[label] = parser.contraddr()
+                     raise AssemblerError(f"duplicated label {label}")
+                  if factoriorom.merge:
+                     print("warning: label breaks up merged instructions", file=sys.stderr)
+                  labels[label] = factoriorom.contraddr()
 
                case 'data' | _:
                   # data labels
                   if label in labels:
-                     raise ValueError(f"duplicated label {label}")
-                  labels[label] = parser.romaddr()
+                     raise AssemblerError(f"duplicated label {label}")
+                  labels[label] = factoriorom.romaddr()
             words = rest
 
       # process instruction and data
@@ -193,16 +211,16 @@ def main(args):
          case ['mov', dst, src] if section == 'code':
             if type(src) is int:
                # mov immediate with literal
-               parser.add_control(genmov(dst, 'immed', src))
+               factoriorom.add_control(genmov(dst, 'immed', src))
             elif src[0] == '#' or src[-1] == ':':
                # mov immediate with label address or constant
-               parser.add_control(genmov(dst, 'immed', src))
+               factoriorom.add_control(genmov(dst, 'immed', src))
             else:
                # mov register
-               parser.add_control(genmov(dst, src))
+               factoriorom.add_control(genmov(dst, src))
 
          case ['inc' | 'dec' as inc, reg] if section == 'code':
-            parser.add_control(genmov(reg, inc))
+            factoriorom.add_control(genmov(reg, inc))
 
          case [j, tgt] if section == 'code' and j[0] == 'j':
             cond = j[1:]
@@ -219,9 +237,9 @@ def main(args):
 
             if not cond:
                if immed is not None:
-                  parser.add_control(genmov('jmp', 'immed', immed))
+                  factoriorom.add_control(genmov('jmp', 'immed', immed))
                else:
-                  parser.add_control(genmov('jmp', tgt))
+                  factoriorom.add_control(genmov('jmp', tgt))
             else:
                # jz, jnz short command
                match cond:
@@ -229,67 +247,72 @@ def main(args):
                   case 'nz': cond = 'nero'
 
                if immed is not None:
-                  parser.add_control(genmov('cj', cond))
-                  parser.add_control({'D': immed})
+                  factoriorom.add_control(genmov('cj', cond))
+                  factoriorom.add_control({'D': immed})
                else:
-                  parser.add_control({
+                  factoriorom.add_control({
                      **genmov('cj', cond),
                      **genmov('cd', tgt)
                   })
-                  parser.add_control({})
+                  factoriorom.add_control({})
 
          case ['noop'] if section == 'code':
-            parser.add_control({})
+            factoriorom.add_control({})
 
          case [*values] if section == 'data':
             # rom data
             for vv in values:
                if type(vv) == str:
                   for v in vv:
-                     parser.add_romdata(ord(v))
+                     factoriorom.add_romdata(ord(v))
                elif type(vv) == int:
-                  parser.add_romdata(vv)
+                  factoriorom.add_romdata(vv)
                else:
-                  raise ValueError(f"only int and string data is supported")
+                  raise AssemblerError(f"only int and string data is supported")
 
          case [name, value] if name and name[0] == '#':
             # constant define
-            if type(value) is not int:
-               raise ValueError(f"constant must be integer, got {value}")
-            consts[name] = value
+            consts[name[1:]] = value
 
          case [] | ['']:
             pass
 
          case _:
-            raise ValueError(f"error parsing {line}")
+            raise AssemblerError(f"error parsing {line}")
 
       if merge_next:
-         parser.merge_next()
+         factoriorom.merge_next()
 
    # populate labels, constants, rom addresses
-   for cont in parser.controls:
+   for cont in factoriorom.controls:
       d = cont.get('D')
       if type(d) == str:
          if d[-1] == ':':
             if d not in labels:
-               print(f"unknown label {d}", file=sys.stderr)
-               return 1
+               raise AssemblerError(f"unknown label {d}", file=sys.stderr)
             cont['D'] = labels[d]
 
          if d[0] == '#':
-            if d not in consts:
-               print(f"unknown constant {d}", file=sys.stderr)
-               return 1
-            cont['D'] = consts[d]
+            try:
+               cont['D'] = int(evalmath(
+                  d[1:],
+                  **labels,
+                  **{k: v for (k, v) in reversed(consts.items())} # reversed to fix dependency
+               ))
+            except Exception:
+               raise AssemblerError(f"failed to parse expression {d[1:]}")
+
+      if d is not None:
+         # make sure data are signed 32bit int
+         cont['D'] = (cont['D'] + 2**31) % 2**32 - 2**31
 
    if debug:
       fdo.write(repr(labels) + '\n')
-      fdo.write(repr(parser) + '\n')
+      fdo.write(repr(factoriorom) + '\n')
    else:
       # generate blueprints for 2 roms
-      controlbp = generate_rom(parser.controls, start_addr=contoff, columns=10)
-      romdatabp = generate_rom(parser.romdata, start_addr=romoff, columns=10, entity_start=len(controlbp['blueprint']['entities'])+1)
+      controlbp = generate_rom(factoriorom.controls, start_addr=contoff, columns=10)
+      romdatabp = generate_rom(factoriorom.romdata, start_addr=romoff, columns=10, entity_start=len(controlbp['blueprint']['entities'])+1)
 
       # merge blueprints
       for e in romdatabp['blueprint']['entities']:
@@ -302,5 +325,5 @@ def main(args):
 if __name__ == '__main__':
    try:
       sys.exit(main(sys.argv))
-   except ValueError as e:
+   except AssemblerError as e:
       print(e, file=sys.stderr)
