@@ -44,3 +44,14 @@ mov wd rd
 
 mov wa #char1 \
 mov wd 'A'
+
+data  latch delay read  rdata
+1     0     0     0     0
+0     1     0     0     0
+0     1     1     1     0
+0     0     1     0     1
+0     0     0     0     0
+
+1     0     0     1     0
+0     0     1     0     0
+0     0     0     0     0
