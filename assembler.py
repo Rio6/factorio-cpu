@@ -86,6 +86,10 @@ class FactorioRom:
    def romaddr(self):
       return len(self.romdata) + self.romoff
 
+   def iter_cont(self):
+      for i, c in enumerate(self.controls):
+         yield i + self.contoff, c
+
    def __repr__(self):
       return repr(self.controls) + '\n' + repr(self.romdata)
 
@@ -173,6 +177,13 @@ def main(args):
    labels = {}
    consts = {}
 
+   def evaluate(exp):
+      return int(evalmath(
+         exp,
+         **labels,
+         **{k: v for (k, v) in reversed(consts.items())} # reversed to fix dependency
+      ))
+
    # convert each line to control signals
    for line in fdi:
       line = line.strip(' \n\r\t')
@@ -212,7 +223,7 @@ def main(args):
             if type(src) is int:
                # mov immediate with literal
                factoriorom.add_control(genmov(dst, 'immed', src))
-            elif src[0] == '#' or src[-1] == ':':
+            elif src[0] == '#' or src[-1] == ':' or src == '.':
                # mov immediate with label address or constant
                factoriorom.add_control(genmov(dst, 'immed', src))
             else:
@@ -263,8 +274,11 @@ def main(args):
             # rom data
             for vv in values:
                if type(vv) == str:
-                  for v in vv:
-                     factoriorom.add_romdata(ord(v))
+                  if vv[0] == '#':
+                     factoriorom.add_romdata(vv) # TODO support string as constant type
+                  else:
+                     for v in vv:
+                        factoriorom.add_romdata(ord(v))
                elif type(vv) == int:
                   factoriorom.add_romdata(vv)
                else:
@@ -284,27 +298,30 @@ def main(args):
          factoriorom.merge_next()
 
    # populate labels, constants, rom addresses
-   for cont in factoriorom.controls:
+   for addr, cont in factoriorom.iter_cont():
       d = cont.get('D')
       if type(d) == str:
-         if d[-1] == ':':
+         if d == '.':
+            cont['D'] = addr + 1
+
+         elif d[-1] == ':':
             if d not in labels:
                raise AssemblerError(f"unknown label {d}", file=sys.stderr)
             cont['D'] = labels[d]
 
-         if d[0] == '#':
+         elif d[0] == '#':
             try:
-               cont['D'] = int(evalmath(
-                  d[1:],
-                  **labels,
-                  **{k: v for (k, v) in reversed(consts.items())} # reversed to fix dependency
-               ))
+               cont['D'] = evaluate(d[1:])
             except Exception:
                raise AssemblerError(f"failed to parse expression {d[1:]}")
 
       if d is not None:
          # make sure data are signed 32bit int
          cont['D'] = (cont['D'] + 2**31) % 2**32 - 2**31
+
+   for i, data in enumerate(factoriorom.romdata):
+      if type(data['D']) == str and len(data['D']) > 1 and data['D'][0] == '#':
+         data['D'] = evaluate(data['D'][1:])
 
    if debug:
       fdo.write(repr(labels) + '\n')
