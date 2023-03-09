@@ -1,6 +1,5 @@
 import sys
 from getopt import getopt
-from math_parser import evaluate as evalmath
 from rom import generate_rom
 from factorio_bp import encode_bp
 
@@ -93,56 +92,6 @@ class FactorioRom:
    def __repr__(self):
       return repr(self.controls) + '\n' + repr(self.romdata)
 
-def split_words(line):
-   quote = None
-   escaped = False
-   parsed = -1
-   words = []
-   line = line.strip(' \n\r\t')
-   count = 0
-
-   def int_or_str(v):
-      try:
-         return int(v, 0)
-      except ValueError:
-         return v
-
-   for i, c in enumerate(line):
-      count += 1
-      if quote is not None:
-         if escaped:
-            escaped = False
-         elif c == '\\':
-            escaped = True
-         elif c == quote:
-            if c == "'":
-               if i - parsed > 2:
-                  raise AssemblerError(f"character literal {line[parsed:i+1]} too long")
-               words.append(ord(line[parsed+1:i]))
-            else:
-               words.append(bytes(line[parsed+1:i], 'utf-8').decode("unicode_escape"))
-
-            quote = None
-            parsed = i
-      else:
-         if c in ['"', "'"]:
-            if i - parsed > 1:
-               raise AssemblerError(f"unexpected quote in {line}")
-            quote = c
-            parsed = i
-         elif c in [' ', '\t']:
-            if i - parsed > 1:
-               words.append(int_or_str(line[parsed+1:i]))
-            parsed = i
-         elif c == ';':
-            parsed = i
-            break
-
-   if count - parsed > 1:
-      words.append(int_or_str(line[parsed+1:count]))
-
-   return words
-
 def genmov(dst, src, data=None):
    dst = dst.lower().split(',')
    src = src.lower()
@@ -161,6 +110,75 @@ def main(args):
    contoff = 1
    romoff = 1
 
+   factoriorom = FactorioRom(contoff=contoff, romoff=romoff)
+   section = 'code'
+   labels = {}
+   consts = {}
+
+   def evaluate(exp):
+      return int(eval(
+         exp,
+         {},
+         {**labels, **consts}
+      ))
+
+   def split_words(line):
+
+      pairs = {'"': '"', "'": "'", '(': ')'}
+
+      quote = None
+      escaped = False
+      parsed = -1
+      words = []
+      line = line.strip(' \n\r\t')
+      count = 0
+
+      def int_or_str(v):
+         try:
+            return int(v, 0)
+         except ValueError:
+            return v
+
+      for i, c in enumerate(line):
+         count += 1
+         if quote is not None:
+            if escaped:
+               escaped = False
+            elif c == '\\':
+               escaped = True
+            elif c == pairs.get(quote):
+               if c == "'":
+                  if i - parsed > 2:
+                     raise AssemblerError(f"character literal {line[parsed:i+1]} too long")
+                  words.append(ord(line[parsed+1:i]))
+               elif c == '"':
+                  words.append(bytes(line[parsed+1:i], 'utf-8').decode("unicode_escape"))
+               elif c == ')':
+                  words.append(evaluate(line[parsed+1:i]))
+               else:
+                  raise AssemblerError("Unknown quote char {c}")
+
+               quote = None
+               parsed = i
+         else:
+            if c in pairs:
+               if i - parsed > 1:
+                  raise AssemblerError(f"unexpected quote in {line}")
+               quote = c
+               parsed = i
+            elif c in [' ', '\t']:
+               if i - parsed > 1:
+                  words.append(int_or_str(line[parsed+1:i]))
+               parsed = i
+            elif c == ';':
+               parsed = i
+               break
+
+      if count - parsed > 1:
+         words.append(int_or_str(line[parsed+1:count]))
+
+      return words
+
    for [k, v] in getopt(args[1:], 'i:o:s:d')[0]:
       match k:
          case '-i':
@@ -172,20 +190,8 @@ def main(args):
          case '-d':
             debug = True
 
-   factoriorom = FactorioRom(contoff=contoff, romoff=romoff)
-   section = 'code'
-   labels = {}
-   consts = {}
-
-   def evaluate(exp):
-      return int(evalmath(
-         exp,
-         **labels,
-         **{k: v for (k, v) in reversed(consts.items())} # reversed to fix dependency
-      ))
-
    # convert each line to control signals
-   for line in fdi:
+   for linenum, line in enumerate(fdi):
       line = line.strip(' \n\r\t')
       words = split_words(line)
       merge_next = False
@@ -291,6 +297,9 @@ def main(args):
          case [] | ['']:
             pass
 
+         case ['$debug']:
+            print(f"line: {linenum+1} addr {factoriorom.contraddr()}", file=sys.stderr)
+
          case _:
             raise AssemblerError(f"error parsing {line}")
 
@@ -306,7 +315,7 @@ def main(args):
 
          elif d[-1] == ':':
             if d not in labels:
-               raise AssemblerError(f"unknown label {d}", file=sys.stderr)
+               raise AssemblerError(f"unknown label {d}")
             cont['D'] = labels[d]
 
          elif d[0] == '#':
@@ -315,13 +324,14 @@ def main(args):
             except Exception:
                raise AssemblerError(f"failed to parse expression {d[1:]}")
 
-      if d is not None:
-         # make sure data are signed 32bit int
-         cont['D'] = (cont['D'] + 2**31) % 2**32 - 2**31
+      if 'D' in cont and not (-2**31 <= cont['D'] < 2**31):
+         raise AssemblerError(f"data out of range: {cont['D']}")
 
    for i, data in enumerate(factoriorom.romdata):
       if type(data['D']) == str and len(data['D']) > 1 and data['D'][0] == '#':
          data['D'] = evaluate(data['D'][1:])
+         if not (-2**31 <= data['D'] < 2**31):
+            raise AssemblerError(f"data out of range: {data['D']}")
 
    if debug:
       fdo.write(repr(labels) + '\n')

@@ -12,12 +12,13 @@ ra    r     *     *      *   *    *    *    *    *    *    *   *   *    *   *   
 wa    w     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   *    *
 wd    l     *     *      *   *    *    *    *    *    *    *   *   *    *   *    *   *   *   *   *   *   *    *    *   *   *   *   *   -    -
 
-auto updates:
-rd = ram(ra)   1 tick after ra
-ram(wa) = w(d) 4 ticks after wa
-add = a + b    0 tick
-sub = a - b    1 tick
-others ops     2 ticks
+ra: 1
+wa followed by wd: 4
+add: 0
+sub: 1
+jz: 1
+jnz: 1
+others: 2
 
 video data
 bit 31:

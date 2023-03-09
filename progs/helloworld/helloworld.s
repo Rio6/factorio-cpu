@@ -2,8 +2,8 @@
 #first_line 900
 #second_line 908
 #bitmap_len 95
-#red 0x20000000
-#blue 0x60000000
+#red 0x10000000
+#blue 0x30000000
 
 .data
 hello: "hello\0"
@@ -69,6 +69,7 @@ j z
 noop
 
 .data
+; font generated from http://www.orgdot.com/aliasfonts/org_01.zip
 bitmap:
 0x00000000;
 0x00100421; !
