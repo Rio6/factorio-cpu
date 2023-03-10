@@ -37,6 +37,8 @@ mov z .
 mov wa #vram
 mov wd 1
 
+$debug
+
 ; move initial position to ram
 mov a 64
 mov ra initial:
@@ -44,7 +46,6 @@ mov wa #pos
 j memcpy:
 mov z .
 
-$debug
 ; show pieces
 mov a 64
 mov ra #pos
