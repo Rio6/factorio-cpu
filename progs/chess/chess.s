@@ -1,19 +1,28 @@
-#pos 400
+; memory locations
 #vram 800
 #disp 900
+#input 1000
 
-#bk (1 | 5<<28)
-#bq (2 | 5<<28)
-#bb (3 | 5<<28)
-#bn (4 | 5<<28)
-#br (5 | 5<<28)
-#bp (6 | 5<<28)
+; colour
+#pink (5 << 28)
+
+; chess piece definitions
+#bk (1 | pink)
+#bq (2 | pink)
+#bb (3 | pink)
+#bn (4 | pink)
+#br (5 | pink)
+#bp (6 | pink)
 #wk 1
 #wq 2
 #wb 3
 #wn 4
 #wr 5
 #wp 6
+
+# variables
+#pos 400
+#selected 432
 
 .data
 initial:
@@ -37,14 +46,14 @@ mov z .
 mov wa #vram
 mov wd 1
 
-$debug
-
 ; move initial position to ram
 mov a 64
 mov ra initial:
 mov wa #pos
 j memcpy:
 mov z .
+
+$debug
 
 ; show pieces
 mov a 64
@@ -53,16 +62,20 @@ mov wa #disp
 j memcpy:
 mov z .
 
-end:
-j end:
+main:
+mov ra #input
+mov ra 0
+noop
+mov a rd
+
+j main:
 noop
 
 memcpy:
+mov wd rd \
 dec a
+j memcpy:
 jz z
-noop
-j memcpy: \
-mov wd rd
 inc ra,wa
 
 .data
