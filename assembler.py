@@ -135,7 +135,6 @@ def split_words(line, ctx):
          return v
 
    for i, c in enumerate(line):
-      count += 1
       if quote is not None:
          if escaped:
             escaped = False
@@ -166,8 +165,8 @@ def split_words(line, ctx):
                words.append(int_or_str(line[parsed+1:i]))
             parsed = i
          elif c == ';':
-            parsed = i
             break
+      count += 1
 
    if count - parsed > 1:
       words.append(int_or_str(line[parsed+1:count]))

@@ -2,8 +2,8 @@
 #first_line 900
 #second_line 908
 #bitmap_len 95
-#red 0x10000000
-#blue 0x30000000
+#c0 0x20000000
+#c1 0x60000000
 
 .data
 hello: "hello\0"
@@ -39,7 +39,7 @@ inc a
 ; display message
 mov ra hello:
 mov wa #first_line
-mov b #blue
+mov b #c0
 
 j disp_message:
 mov z disp1:
@@ -47,7 +47,7 @@ disp1:
 
 mov ra world:
 mov wa #second_line
-mov b #red
+mov b #c1
 
 j disp_message:
 mov z end:
