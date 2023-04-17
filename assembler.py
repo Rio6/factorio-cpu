@@ -327,8 +327,11 @@ def main(args):
             except Exception:
                raise AssemblerError(f"failed to parse expression {d[1:]}")
 
-      if 'D' in cont and not (-2**31 <= cont['D'] < 2**31):
-         raise AssemblerError(f"data out of range: {cont['D']}")
+      if 'D' in cont:
+         if 2**31 <= cont['D'] < 2**32:
+            cont['D'] -= 2**32
+         if not (-2**31 <= cont['D'] < 2**31):
+            raise AssemblerError(f"data out of range: {cont['D']}")
 
    for i, data in enumerate(ctx.rom.romdata):
       if type(data['D']) == str and len(data['D']) > 1 and data['D'][0] == '#':
