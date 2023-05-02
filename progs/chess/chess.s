@@ -62,25 +62,30 @@ mov z .
 
 loop:
 
-mov ra #input ; read from input
-mov ra 0      ; clear read register
-noop          ; wait for input
-mov a,y rd    ; save user input, check zero
-mov a x       ; check saved value is not zero
-jz loop:      ; input is zero, skip
+mov ra #input   ; read from input
+mov ra 0        ; clear read register
+noop            ; wait for input
+mov a,y rd      ; save user input, check zero
+mov a x         ; check saved value is not zero
+jz loop:        ; input is zero, skip
 noop
 
-jnz sel_fin:  ; jump using saved value
+jnz sel_fin:    ; jump using saved value
 noop
 
-j loop:       ; saved value is zero
-mov x y       ; save input value
+j loop:         ; saved value is zero
+mov x y         ; save input value
 
-sel_fin:      ; saved value is not zero
-j move_piece: ; move piece
+sel_fin:        ; saved value is not zero
+j check_move:   ; check if move if valid
 mov z .
-j loop:       ; loop
-mov x 0       ; clear saved value
+noop            ; wait for jnz condition
+
+jnz move_piece: ; move piece if valid
+mov z .
+
+j loop:         ; loop
+mov x 0         ; clear saved value
 
 ; a count
 ; ra src
@@ -95,8 +100,36 @@ inc wa
 
 ; x src
 ; y dst
+; a 1 if valid, 0 if not
+; checks for colour only
+check_move:
+mov b #pos-1 \  ; calculate addresses
+mov a x         ; source address
+mov ra add \    ; read source value
+mov a y         ; destination address
+mov ra add      ; read destination value
+mov a rd        ; store source value to a
+mov b rd        ; store dest value to b
+
+jz z            ; fail if source has no piece
+mov a 0         ; return 0
+
+mov a xor \     ; check colour bits
+mov b 0x7FFFFFF
+noop            ; wait for calculation
+noop
+
+jle z           ; same colour, faile
+mov a 0         ; return 0
+
+j z
+mov a 1         ; return 1
+
+; x src
+; y dst
+; move the piece and update display
 move_piece:
-mov a x         ; calculate source address
+mov a x \       ; calculate source address
 mov b #pos-1
 
 mov ra,wa add \ ; read write from source
@@ -114,11 +147,9 @@ mov a y \       ; calculate display destination address
 mov wa add      ; clear source cell
 mov wd 0
 
-mov wa add      ; write piece to display destination
-mov wd x
-
+mov wa add      ; write to display destination
 j z             ; return
-noop
+mov wd x        ; write piece
 
 .data
 bitmap:
