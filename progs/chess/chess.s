@@ -20,7 +20,7 @@
 #wr 5
 #wp 6
 
-# variables
+; variables
 #pos 400
 #selected 432
 
@@ -53,8 +53,6 @@ mov wa #pos
 j memcpy:
 mov z .
 
-$debug
-
 ; show pieces
 mov a 64
 mov ra #pos
@@ -62,21 +60,65 @@ mov wa #disp
 j memcpy:
 mov z .
 
-main:
-mov ra #input
-mov ra 0
-noop
-mov a rd
+loop:
 
-j main:
+mov ra #input ; read from input
+mov ra 0      ; clear read register
+noop          ; wait for input
+mov a,y rd    ; save user input, check zero
+mov a x       ; check saved value is not zero
+jz loop:      ; input is zero, skip
 noop
 
+jnz sel_fin:  ; jump using saved value
+noop
+
+j loop:       ; saved value is zero
+mov x y       ; save input value
+
+sel_fin:      ; saved value is not zero
+j move_piece: ; move piece
+mov z .
+j loop:       ; loop
+mov x 0       ; clear saved value
+
+; a count
+; ra src
+; wa dst (set right before j)
 memcpy:
 mov wd rd \
-dec a
-j memcpy:
 jz z
-inc ra,wa
+dec a
+j memcpy: \
+inc ra
+inc wa
+
+; x src
+; y dst
+move_piece:
+mov a x         ; calculate source address
+mov b #pos-1
+
+mov ra,wa add \ ; read write from source
+mov a y         ; calculate destination address
+
+mov wd 0 \      ; write 0 to source
+mov wa add      ; write to destination
+
+mov wd,x rd \   ; read piece from source and write to destination
+mov wa 0 \
+mov a x         ; calculate display source address
+mov b #disp-1
+
+mov a y \       ; calculate display destination address
+mov wa add      ; clear source cell
+mov wd 0
+
+mov wa add      ; write piece to display destination
+mov wd x
+
+j z             ; return
+noop
 
 .data
 bitmap:
