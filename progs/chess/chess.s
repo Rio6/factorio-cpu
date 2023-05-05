@@ -64,21 +64,24 @@ loop:
 
 mov ra #input   ; read from input
 mov ra 0        ; clear read register
-noop            ; wait for input
+mov b #pos-1    ; calculate selected address
 mov a,y rd      ; save user input, check zero
-mov a x         ; check saved value is not zero
+mov a x \       ; check saved value is not zero
+mov ra add      ; address of selected position
 jz loop:        ; input is zero, skip
+mov a rd        ; read value of selected position
+
+jnz check_move: ; check if saved value is zero
+mov z sel_fin:  ; go to sel_fin when returning from check_move
+
+; saved value is zero
+jz loop:        ; if selected position is empty, continue
 noop
 
-jnz sel_fin:    ; jump using saved value
-noop
-
-j loop:         ; saved value is zero
+j loop:         ; else
 mov x y         ; save input value
 
 sel_fin:        ; saved value is not zero
-j check_move:   ; check if move if valid
-mov z .
 noop            ; wait for jnz condition
 
 jnz move_piece: ; move piece if valid
@@ -104,22 +107,22 @@ inc wa
 ; checks for colour only
 check_move:
 mov b #pos-1 \  ; calculate addresses
+mov a y         ; dest address
+mov ra add \    ; read dest value
 mov a x         ; source address
-mov ra add \    ; read source value
-mov a y         ; destination address
-mov ra add      ; read destination value
-mov a rd        ; store source value to a
-mov b rd        ; store dest value to b
+mov ra add      ; read source value
+mov a rd        ; store dest value to a
+mov b rd        ; store source value to b
 
-jz z            ; fail if source has no piece
-mov a 0         ; return 0
+jz z            ; pass if dest has no piece
+mov a 1         ; return 1
 
 mov a xor \     ; check colour bits
 mov b 0x7FFFFFF
 noop            ; wait for calculation
 noop
 
-jle z           ; same colour, faile
+jle z           ; same colour, fail
 mov a 0         ; return 0
 
 j z
