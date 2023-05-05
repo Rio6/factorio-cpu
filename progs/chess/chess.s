@@ -22,7 +22,6 @@
 
 ; variables
 #pos 400
-#selected 432
 
 .data
 initial:
@@ -36,6 +35,9 @@ initial:
 #wr #wn #wb #wq #wk #wb #wn #wr
 
 .code
+; reset regiters
+mov a,b,x,y,z 0
+
 ; move bitmaps to vram
 mov a 12
 mov ra bitmap:
